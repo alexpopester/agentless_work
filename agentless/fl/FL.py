@@ -186,6 +186,49 @@ class: MyClass5
 Return just the locations wrapped with ```.
 """
 
+    semantic_obtain_relevant_functions_and_vars_from_compressed_files_prompt_more = """
+Please look through the following GitHub Problem Description and the Skeleton of Relevant Files.
+Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
+For each location you provide, either give the name of the class, the name of a method in a class, the name of a function, or the name of a global variable.
+Semantic scoring of each file and related classes, functions, and methods have been provided. The higher scores indicate a higher cosine similarity between the Github Issue and the code issues.
+Please consider the semantic scores when evaluating which files and locations to investigate
+
+### GitHub Problem Description ###
+{problem_statement}
+
+### Skeleton of Relevant Files ###
+{file_contents}
+
+### Semantic Scores of Relebant Files and Functions ###
+{semantic_scores}
+
+###
+
+
+Please provide the complete set of locations as either a class name, a function name, or a variable name.
+Note that if you include a class, you do not need to list its specific methods.
+You can include either the entire class or don't include the class name and instead include specific methods in the class.
+### Examples:
+```
+full_path1/file1.py
+function: my_function_1
+class: MyClass1
+function: MyClass2.my_method
+
+full_path2/file2.py
+variable: my_var
+function: MyClass3.my_method
+
+full_path3/file3.py
+function: my_function_2
+function: my_function_3
+function: MyClass4.my_method_1
+class: MyClass5
+```
+
+Return just the locations wrapped with ```.
+"""
+
     obtain_relevant_functions_and_vars_from_raw_files_prompt = """
 Please look through the following GitHub Problem Description and Relevant Files.
 Identify all locations that need inspection or editing to fix the problem, including directly related areas as well as any potentially related global variables, functions, and classes.
@@ -370,6 +413,8 @@ Return just the locations wrapped with ```.
         total_lines=30,
         prefix_lines=10,
         suffix_lines=10,
+        semantic_scoring_message: bool = False,
+        semantic_scores: dict = {}
     ):
         from agentless.util.api_requests import num_tokens_from_messages
         from agentless.util.model import make_model
@@ -390,12 +435,18 @@ Return just the locations wrapped with ```.
             for fn, code in compressed_file_contents.items()
         ]
         file_contents = "".join(contents)
-        template = (
-            self.obtain_relevant_functions_and_vars_from_compressed_files_prompt_more
-        )
-        message = template.format(
-            problem_statement=self.problem_statement, file_contents=file_contents
-        )
+        if semantic_scoring_message:
+            template = (
+                self.semantic_obtain_relevant_functions_and_vars_from_compressed_files_prompt_more
+            )
+            message = template.format(problem_statement=self.problem_statement, file_contents=file_contents, semantic_scores=semantic_scores)
+        else:
+            template = (
+                self.obtain_relevant_functions_and_vars_from_compressed_files_prompt_more
+            )
+            message = template.format(
+                problem_statement=self.problem_statement, file_contents=file_contents
+            )
         self.logger.info(f"prompting with message:")
         self.logger.info("\n" + message)
 

@@ -18,12 +18,12 @@ from swebench.harness.constants import (
 )
 from swebench.harness.docker_build import build_env_images
 from swebench.harness.run_evaluation import get_dataset_from_preds, run_instance
-from swebench.harness.test_spec import (
+from swebench.harness.test_spec.test_spec import (
     TestSpec,
     make_env_script_list,
     make_repo_script_list,
 )
-from swebench.harness.utils import get_test_directives
+from swebench.harness.test_spec.python import get_test_directives
 from tqdm import tqdm
 
 OPEN_FILE_LIMIT = 4096
@@ -159,6 +159,9 @@ def make_reproduction_sec(instance: SWEbenchInstance) -> TestSpec:
         arch=arch,
         FAIL_TO_PASS=fail_to_pass,
         PASS_TO_PASS=pass_to_pass,
+        language="py",
+        docker_specs={},
+        namespace=None,
     )
 
 
@@ -377,13 +380,20 @@ def run_reproduction_tests(
             }
 
     instances = get_dataset_from_preds(
-        dataset_name, split, instance_ids, predictions, run_id
+        dataset_name, split, instance_ids, predictions, run_id, False
     )
 
     if not instances:
         print("No instances to run.")
     else:
-        build_env_images(client, instances, force_rebuild, max_workers)
+        build_env_images(
+            client,
+            instances,
+            force_rebuild,
+            max_workers,
+            instance_image_tag="latest",
+            env_image_tag="latest",
+        )
 
     no_f2p_instances = []
 
@@ -450,33 +460,34 @@ def run_reproduction_tests(
                     client,
                     run_id,
                     timeout,
-                ): None
+                ): test_spec.instance_id
                 for test_spec in test_specs
                 if test_spec.instance_id in ids
             }
             # Wait for each future to complete
             for future in as_completed(futures):
                 pbar.update(1)
-                result = future.result()
-                if result:
-                    instance_id = result[0]
-                    resolved = result[1][instance_id]["resolved"]
-                    resolved_dict[instance_id] = resolved
-                    # See if the tests ran successfully
-                    if testing_patches:
-                        expected_output = "Issue reproduced"
-                        other_patterns = ["Issue resolved", "Other issues"]
-                    else:
-                        expected_output = "Issue resolved"
-                        other_patterns = ["Issue reproduced", "Other issues"]
-                    path_to_log = f"logs/run_evaluation/{run_id}/{split}/{instance_id}/test_output.txt"
-                    passes_tests = txt_file_contains_string(
-                        path_to_log, expected_output, other_patterns=other_patterns
-                    )
-                    results[instance_id] = passes_tests
+                instance_id = futures[future]
                 try:
-                    # Update progress bar, check if instance ran successfully
-                    future.result()
+                    future_result = future.result()
+                    print(future_result)
+                    if (
+                        future_result.get("completed")
+                        == True
+                        # and results.get("resolved") == True
+                    ):
+                        # See if the tests ran successfully
+                        if testing_patches:
+                            expected_output = "Issue reproduced"
+                            other_patterns = ["Issue resolved", "Other issues"]
+                        else:
+                            expected_output = "Issue resolved"
+                            other_patterns = ["Issue reproduced", "Other issues"]
+                        path_to_log = f"logs/run_evaluation/{run_id}/{split}/{instance_id}/test_output.txt"
+                        passes_tests = txt_file_contains_string(
+                            path_to_log, expected_output, other_patterns=other_patterns
+                        )
+                        results[instance_id] = passes_tests
                 except Exception as e:
                     traceback.print_exc()
                     results[instance_id] = False
@@ -523,7 +534,7 @@ def run_tests(
         }
 
     instances = get_dataset_from_preds(
-        dataset_name, split, instance_ids, predictions, run_id
+        dataset_name, split, instance_ids, predictions, run_id, True
     )
 
     print(f"Running {len(instances)} unevaluated instances...")

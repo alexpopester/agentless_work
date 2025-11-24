@@ -64,38 +64,38 @@ def request_chatgpt_engine(config, logger, base_url=None, max_retries=40, timeou
     while ret is None and retries < max_retries:
         try:
             # Attempt to get the completion
-            logger.info("Creating API request")
+            print("Creating API request")
 
             ret = client.chat.completions.create(**config)
 
         except openai.OpenAIError as e:
             if isinstance(e, openai.BadRequestError):
-                logger.info("Request invalid")
+                print("Request invalid")
                 print(e)
-                logger.info(e)
+                print(e)
                 raise Exception("Invalid API Request")
             elif isinstance(e, openai.RateLimitError):
                 print("Rate limit exceeded. Waiting...")
-                logger.info("Rate limit exceeded. Waiting...")
+                print("Rate limit exceeded. Waiting...")
                 print(e)
-                logger.info(e)
+                print(e)
                 time.sleep(5)
             elif isinstance(e, openai.APIConnectionError):
                 print("API connection error. Waiting...")
-                logger.info("API connection error. Waiting...")
+                print("API connection error. Waiting...")
                 print(e)
-                logger.info(e)
+                print(e)
                 time.sleep(5)
             else:
                 print("Unknown error. Waiting...")
-                logger.info("Unknown error. Waiting...")
+                print("Unknown error. Waiting...")
                 print(e)
-                logger.info(e)
+                print(e)
                 time.sleep(1)
 
         retries += 1
 
-    logger.info(f"API response {ret}")
+    print(f"API response {ret}")
     return ret
 
 

@@ -130,10 +130,12 @@ def localize_instance(
     found_files = []
     found_related_locs = {}
     found_edit_locs = {}
+    semantic_scores = {}
     additional_artifact_loc_file = None
     additional_artifact_loc_related = None
     additional_artifact_loc_edit_location = None
     file_traj, related_loc_trajs, edit_loc_traj = {}, [], {}
+    semantic_scores_exist = False
 
     # file level localization
     if args.file_level:
@@ -162,6 +164,9 @@ def localize_instance(
                         "additional_artifact_loc_related"
                     ]
                     related_loc_trajs = locs["related_loc_traj"]
+                if "semantic_scoring_results" in locs:
+                    semantic_scores = locs["semantic_scoring_results"]
+                    semantic_scores_exist = True
                 break
 
         if len(found_files) == 0:
@@ -185,6 +190,7 @@ def localize_instance(
                 additional_artifact_loc_related = []
                 found_related_locs = {}
                 related_loc_traj = {}
+                # semantic_scores = args.start_file
                 if args.compress and not args.related_level_separate_file:
                     (
                         found_related_locs,
@@ -199,6 +205,8 @@ def localize_instance(
                         total_lines=args.compress_assign_total_lines,
                         prefix_lines=args.compress_assign_prefix_lines,
                         suffix_lines=args.compress_assign_suffix_lines,
+                        semantic_scoring_message=semantic_scores_exist,
+                        semantic_scores=semantic_scores
                     )
                     additional_artifact_loc_related = [additional_artifact_loc_related]
                     related_loc_trajs.append(related_loc_traj)
@@ -230,6 +238,8 @@ def localize_instance(
                             total_lines=args.compress_assign_total_lines,
                             prefix_lines=args.compress_assign_prefix_lines,
                             suffix_lines=args.compress_assign_suffix_lines,
+                            semantic_scoring_message=semantic_scores_exist,
+                            semantic_scores=semantic_scores,
                         )
                         found_related_locs[pred_file] = found_related_locs_i[pred_file]
                         additional_artifact_loc_related.append(
@@ -387,6 +397,7 @@ def localize_instance(
                     "found_edit_locs": found_edit_locs,
                     "additional_artifact_loc_edit_location": additional_artifact_loc_edit_location,
                     "edit_loc_traj": edit_loc_traj,
+                    "semantic_scoring_results": semantic_scores,
                 }
             )
             + "\n"
@@ -489,6 +500,7 @@ def merge(args):
         for locs in start_file_locs:
             merged_found_locs = []
             if "found_edit_locs" in locs and len(locs["found_edit_locs"]):
+                print(locs["found_edit_locs"])
                 merged_found_locs = merge_locs(
                     locs["found_edit_locs"][st_id : st_id + 1]
                 )
@@ -583,7 +595,7 @@ def main():
         "--backend",
         type=str,
         default="openai",
-        choices=["openai", "deepseek", "anthropic"],
+        choices=["openai", "deepseek", "anthropic", "gemini"],
     )
     parser.add_argument(
         "--dataset",

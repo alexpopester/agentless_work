@@ -11,6 +11,7 @@ from swebench.harness.constants import (
     TestStatus,
 )
 from swebench.harness.grading import get_eval_tests_report, get_logs_eval
+from swebench.harness.test_spec.test_spec import make_test_spec
 
 from agentless.test.run_tests import run_tests
 
@@ -33,7 +34,6 @@ def rewrite_report(instance_id, input_folder_path, regression_tests):
 
 def save_passing_tests(output_jsonl_path, input_folder_path, dataset):
     ds = load_dataset(dataset)
-
     with jsonlines.open(output_jsonl_path, mode="w") as writer:
         for entry in ds["test"]:
             instance_id = entry["instance_id"]
@@ -41,7 +41,9 @@ def save_passing_tests(output_jsonl_path, input_folder_path, dataset):
             log_path = f"{input_folder_path}/test/{instance_id}/test_output.txt"
             try:
                 # obtain the list of tests that were ran
-                eval_sm, found = get_logs_eval(log_path)
+                # TODO:
+                test_spec = make_test_spec(entry)
+                eval_sm, found = get_logs_eval(test_spec=test_spec, log_fp=log_path)
             except FileNotFoundError:
                 print(f"File not found: {log_path}")
                 continue

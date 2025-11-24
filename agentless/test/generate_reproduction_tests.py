@@ -110,10 +110,10 @@ def gen_test(instance_id, args, swe_bench_data, prev_o, write_lock=None):
             break
 
     if found:
-        logger.info(f"skipping {instance_id} since patch already generated")
+        print(f"skipping {instance_id} since patch already generated")
         return None
 
-    logger.info(f"================ generating test for {instance_id} ================")
+    print(f"================ generating test for {instance_id} ================")
 
     bench_data = [x for x in swe_bench_data if x["instance_id"] == instance_id][0]
     problem_statement = bench_data["problem_statement"]
@@ -132,7 +132,7 @@ def gen_test(instance_id, args, swe_bench_data, prev_o, write_lock=None):
         problem_statement=problem_statement,
     ).strip()
 
-    logger.info(f"prompting with message:\n{message}")
+    print(f"prompting with message:\n{message}")
 
     all_generations, counts, traj = [], [], []
     sample_responses = []
@@ -215,7 +215,7 @@ def gen_test(instance_id, args, swe_bench_data, prev_o, write_lock=None):
             continue
 
         raw_output = ret["response"]
-        logger.info(f"raw output:\n{raw_output}")
+        print(f"raw output:\n{raw_output}")
         print((f"raw output:\n{raw_output}"))
         all_generations.append(raw_output)
 
@@ -284,9 +284,10 @@ def post_process_tests(args):
 
     for raw_output in raw_outputs:
         instance_id = raw_output["instance_id"]
-
+        # print(f"\n\nRAW_OUTPUT: {raw_output["all_generations"][0]}")
         if (
             raw_output["raw_output"] == ""
+            or (len(raw_output["all_generations"][0]) < generation_idx)
             or not raw_output["all_generations"][0][generation_idx]
         ):
             with open(args.output_file, "a") as f:
@@ -506,7 +507,7 @@ def main():
         "--backend",
         type=str,
         default="openai",
-        choices=["openai", "deepseek", "anthropic"],
+        choices=["openai", "deepseek", "anthropic", "gemini"],
     )
     parser.add_argument("--output_folder", type=str, required=True)
     parser.add_argument("--output_file", type=str)

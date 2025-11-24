@@ -6,4 +6,7 @@ tiktoken
 libcst
 llama-index
 jsonlines
+unidiff
+matplotlib
+llama-index-embeddings-huggingface
 swebench @ git+https://github.com/princeton-nlp/SWE-bench

@@ -25,7 +25,7 @@ def retrieve_locs(bug, args, swe_bench_data, found_files, prev_o, write_lock=Non
             break
 
     if found:
-        logger.info(f"skipping {bug['instance_id']} since patch already generated")
+        print(f"skipping {bug['instance_id']} since patch already generated")
         return None
 
     instance_id = bug["instance_id"]

@@ -59,6 +59,7 @@ def _run_reproduction_tests(args):
         with open(args.test_jsonl.replace(".jsonl", "_verified.jsonl"), "w") as file:
             for evaluation_test in evaluation_tests:
                 instance_id = evaluation_test["instance_id"]
+                print(f"INST_ID: {instance_id}, Results: {evaluation_test}")
                 if instance_id in results and results[instance_id]:
                     evaluation_test["verified"] = True
                     file.write(json.dumps(evaluation_test) + "\n")

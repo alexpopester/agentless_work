@@ -56,7 +56,7 @@ def select_test(instance_id, args, swe_bench_data, prev_o, passing_tests):
             break
 
     if found:
-        logger.info(f"skipping {instance_id}")
+        print(f"skipping {instance_id}")
         return None
 
     if len(passing_tests) == 0:
@@ -75,7 +75,7 @@ def select_test(instance_id, args, swe_bench_data, prev_o, passing_tests):
             )
         return
 
-    logger.info(f"================ selecting test for {instance_id} ================")
+    print(f"================ selecting test for {instance_id} ================")
 
     bench_data = [x for x in swe_bench_data if x["instance_id"] == instance_id][0]
     problem_statement = bench_data["problem_statement"]
@@ -87,7 +87,7 @@ def select_test(instance_id, args, swe_bench_data, prev_o, passing_tests):
         problem_statement=problem_statement, passing_tests="\n".join(passing_tests)
     ).strip()
 
-    logger.info(f"prompting with message:\n{message}")
+    print(f"prompting with message:\n{message}")
 
     # get greedy sample
     model = make_model(
@@ -114,7 +114,7 @@ def select_test(instance_id, args, swe_bench_data, prev_o, passing_tests):
     greedy_traj["prompt"] = message
     raw_output = greedy_traj["response"]
 
-    logger.info(raw_output)
+    print(raw_output)
 
     model_identified_tests = _parse_model_return_lines(raw_output)
     subset_regression_tests = []

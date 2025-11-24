@@ -1,8 +1,10 @@
 import copy
 import os
 from abc import ABC
+import gc  # Add this to your imports
 
 import tiktoken
+from transformers import AutoTokenizer
 from llama_index.core import (
     Document,
     MockEmbedding,
@@ -14,7 +16,10 @@ from llama_index.core import (
 from llama_index.core.callbacks import CallbackManager, TokenCountingHandler
 from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.schema import MetadataMode
-from llama_index.embeddings.openai import OpenAIEmbedding
+
+# from llama_index.embeddings.openai import OpenAIEmbedding
+# from llama_index.embeddings.huggingface_api import HuggingFaceInferenceAPIEmbedding
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 from agentless.util.api_requests import num_tokens_from_messages
 from agentless.util.index_skeleton import parse_global_stmt_from_code
@@ -216,25 +221,43 @@ class EmbeddingIndex(ABC):
     def retrieve(self, mock=False):
 
         persist_dir = self.persist_dir.format(instance_id=self.instance_id)
-        token_counter = TokenCountingHandler(
-            tokenizer=tiktoken.encoding_for_model("text-embedding-3-small").encode
+        # token_counter = TokenCountingHandler(
+        #    tokenizer=tiktoken.encoding_for_model("BAAI/bge-small-en-v1.5").encode
+        # )
+        hf_tokenizer = AutoTokenizer.from_pretrained("BAAI/bge-small-en-v1.5")
+
+        # 2. Use the Hugging Face tokenizer's encode method
+        token_counter = TokenCountingHandler(tokenizer=hf_tokenizer.encode)
+        # embed_model = HuggingFaceInferenceAPIEmbedding(
+        #    model_name="BAAI/bge-small-en-v1.5"
+        # )
+        embed_model = HuggingFaceEmbedding(
+            model_name="BAAI/bge-small-en-v1.5", embed_batch_size=10, device="cpu"
         )
+        Settings.embed_model = embed_model
         if not os.path.exists(persist_dir) or mock:
             files, _, _ = get_full_file_paths_and_classes_and_functions(self.structure)
             filtered_files = self.filter_files(files)
+
             self.logger.info(f"Total number of considered files: {len(filtered_files)}")
-            print(f"Total number of considered files: {len(filtered_files)}")
-            documents = []
+
+            # --- CHANGED: Incremental Indexing Strategy ---
+            index = None
+            current_batch = []
+            BATCH_SIZE = 20  # Keep this small. Only hold 20 docs in RAM at once.
+
+            total_docs_processed = 0
 
             for file_content in files:
-                content = "\n".join(file_content[1])
                 file_name = file_content[0]
-
                 if file_name not in filtered_files:
                     continue
 
-                # create documents
+                content = "\n".join(file_content[1])
+
+                # Create documents for this ONE file
                 class_info, function_names, _ = parse_python_file(None, content)
+
                 if self.index_type == "simple":
                     docs = build_file_documents_simple(
                         class_info, function_names, file_name, content
@@ -246,28 +269,61 @@ class EmbeddingIndex(ABC):
                 else:
                     raise NotImplementedError
 
-                documents.extend(docs)
+                current_batch.extend(docs)
 
-            self.logger.info(f"Total number of documents: {len(documents)}")
-            print(f"Total number of documents: {len(documents)}")
+                # If our batch is full, push to index and CLEAR memory
+                if len(current_batch) >= BATCH_SIZE:
+                    if index is None:
+                        # First batch creates the index
+                        index = VectorStoreIndex.from_documents(
+                            current_batch, embed_model=embed_model
+                        )
+                    else:
+                        # Subsequent batches are inserted
+                        index.insert_nodes(current_batch)
+
+                    total_docs_processed += len(current_batch)
+                    print(f"Processed {total_docs_processed} documents...")
+
+                    # WIPE MEMORY
+                    current_batch = []
+                    gc.collect()  # Force Python to release RAM now
+
+            # Process any remaining documents in the final batch
+            if current_batch:
+                if index is None:
+                    index = VectorStoreIndex.from_documents(
+                        current_batch, embed_model=embed_model
+                    )
+                else:
+                    index.insert_nodes(current_batch)
+                total_docs_processed += len(current_batch)
+
+            self.logger.info(f"Total number of documents: {total_docs_processed}")
 
             if mock:
-                embed_model = MockEmbedding(
-                    embed_dim=1024
-                )  # embedding dimension does not matter for mocking.
+                # Mocking logic (unchanged, just ensure index is valid)
+                embed_model = MockEmbedding(embed_dim=1024)
                 Settings.callback_manager = CallbackManager([token_counter])
-            else:
-                embed_model = OpenAIEmbedding(model_name="text-embedding-3-small")
-            index = VectorStoreIndex.from_documents(documents, embed_model=embed_model)
+                # If we mocked, we likely didn't run the loop above,
+                # so you might need to handle the 'index is None' case for pure mock runs.
+                if index is None:
+                    index = VectorStoreIndex.from_documents([], embed_model=embed_model)
+
+            # Persist the final built index
             index.storage_context.persist(persist_dir=persist_dir)
+
         else:
             storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
             index = load_index_from_storage(storage_context)
 
         self.logger.info(f"Retrieving with query:\n{self.problem_statement}")
 
-        retriever = VectorIndexRetriever(index=index, similarity_top_k=100)
+        retriever = VectorIndexRetriever(
+            index=index, similarity_top_k=100, embed_model=embed_model
+        )
         documents = retriever.retrieve(self.problem_statement)
+        # print(f"RETRIEVED: {documents}")
 
         self.logger.info(
             f"Embedding Tokens: {token_counter.total_embedding_token_count}"

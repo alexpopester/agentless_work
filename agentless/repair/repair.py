@@ -119,12 +119,8 @@ Here is an example:
 
 ```python
 ### mathweb/flask/app.py
-<<<<<<< SEARCH
-from flask import Flask
-=======
 import math
 from flask import Flask
->>>>>>> REPLACE
 ```
 
 Please note that the *SEARCH/REPLACE* edit REQUIRES PROPER INDENTATION. If you would like to add the line '        print(x)', you must fully write that out, with all those spaces before the code!
@@ -172,19 +168,19 @@ def _post_process_multifile_repair(
         logger.error(e)
         return edited_files, new_contents
 
-    logger.info("=== file_to_commands: ===")
-    logger.info(json.dumps(file_to_commands, indent=2))
+    print("=== file_to_commands: ===")
+    print(json.dumps(file_to_commands, indent=2))
 
     for edited_file_key in file_to_commands:
         edited_file = ""
         new_content = ""
         try:
-            logger.info(f"=== edited_file: {edited_file_key} ===")
+            print(f"=== edited_file: {edited_file_key} ===")
             edit_commands = file_to_commands[edited_file_key]
-            logger.info("=== edit_commands: ===")
+            print("=== edit_commands: ===")
             for c in edit_commands:
-                logger.info(c)
-                logger.info("\n" + "-" * 40)
+                print(c)
+                print("\n" + "-" * 40)
             edited_file = eval(edited_file_key)  # convert '"file.py"' to 'file.py'
             content = file_contents[edited_file]
             if diff_format:
@@ -216,8 +212,8 @@ def _post_process_multifile_repair(
             )
         )
 
-        logger.info(f"extracted patch:")
-        logger.info("\n".join(diff))
+        print(f"extracted patch:")
+        print("\n".join(diff))
         print("\n".join(diff))
 
     return edited_files, new_contents
@@ -285,10 +281,10 @@ def process_loc(loc, args, swe_bench_data, prev_o, write_lock=None):
             break
 
     if found:
-        logger.info(f"skipping {instance_id} since patch already generated")
+        print(f"skipping {instance_id} since patch already generated")
         return None
 
-    logger.info(f"================ repairing {instance_id} ================")
+    print(f"================ repairing {instance_id} ================")
     if len(loc["found_files"]) == 0:
         if write_lock is not None:
             write_lock.acquire()
@@ -384,11 +380,15 @@ def process_loc(loc, args, swe_bench_data, prev_o, write_lock=None):
     prompt_template = (
         repair_prompt_combine_topn_cot_str_replace
         if args.cot and args.str_replace_format
-        else repair_prompt_combine_topn_cot_diff
-        if args.cot and args.diff_format
-        else repair_prompt_combine_topn_cot
-        if args.cot
-        else repair_prompt_combine_topn
+        else (
+            repair_prompt_combine_topn_cot_diff
+            if args.cot and args.diff_format
+            else (
+                repair_prompt_combine_topn_cot
+                if args.cot
+                else repair_prompt_combine_topn
+            )
+        )
     )
     file_instruction = repair_relevant_file_instruction
     message = prompt_template.format(
@@ -396,7 +396,7 @@ def process_loc(loc, args, swe_bench_data, prev_o, write_lock=None):
         problem_statement=problem_statement,
         content=topn_content.rstrip(),
     ).strip()
-    logger.info(f"prompting with message:\n{message}")
+    print(f"prompting with message:\n{message}")
 
     all_generations, counts, traj, prev_contents, file_names = [], [], [], [], []
     sample_responses = []
@@ -488,7 +488,7 @@ def process_loc(loc, args, swe_bench_data, prev_o, write_lock=None):
             continue
 
         raw_output = ret["response"]
-        logger.info(f"raw output:\n{raw_output}")
+        print(f"raw output:\n{raw_output}")
         all_generations.append(raw_output)
         edited_files, new_contents = _post_process_multifile_repair(
             raw_output,
@@ -593,7 +593,7 @@ def post_process_raw_output(
             new_contents, contents
         )
 
-        logger.info(f"{differ_by_empty_lines = }")
+        print(f"{differ_by_empty_lines = }")
         if syntax_success and not differ_by_empty_lines:
             git_diffs = raw_git_diffs
         else:
@@ -681,16 +681,18 @@ def post_process_repair(args):
                             args.context_window,
                             args.loc_interval,
                             args.fine_grain_loc_only,
-                            file_content=file_contents[tmp_pred_file]
-                            if tmp_pred_file in file_contents
-                            else "",
+                            file_content=(
+                                file_contents[tmp_pred_file]
+                                if tmp_pred_file in file_contents
+                                else ""
+                            ),
                         )
                     else:
                         line_locs, context_intervals = [], []  # default values.
 
                     file_loc_intervals[tmp_pred_file] = context_intervals
             except Exception as e:
-                logger.info(e)
+                print(e)
                 print(e)
                 raw_output_text = ""
 
@@ -758,7 +760,7 @@ def main():
         "--backend",
         type=str,
         default="openai",
-        choices=["openai", "deepseek", "anthropic"],
+        choices=["openai", "deepseek", "anthropic", "gemini"],
     )
     parser.add_argument("--output_folder", type=str, required=True)
     parser.add_argument("--post_process", action="store_true")
