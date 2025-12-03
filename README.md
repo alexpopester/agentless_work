@@ -1,5 +1,11 @@
 # CS6640 Final Project: Using GraphCodeBERT Embeddings To Enhance an Agentless Pipeline’s Ability to localize bugs in Python Github Projects
 This project includes the agenless code, the added api bindings for gemini and a local model, the semantic similarity calculations via GraphCodeBERT and a couple of runner scripts.
+
+### Before running anything
+- create a python virtual environment "python -m venv .venv"
+- activate the virtual environment "source .venv/bin/activate"
+- install the dependencies "pip install -r requirements.txt"
+
 ### To run the Semantic similarity on one instance do the following:
 - Open "run_semantic_scoring_alone.sh"
 - Point the "in_dir" variable to a folder containing "Agentless" localization results. A pre-generated set of these can be downloaded here: [https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip](https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip)
