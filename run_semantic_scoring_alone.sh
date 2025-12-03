@@ -8,10 +8,11 @@ export GOOGLE_API_KEY="<TODO>"
 #export PROJECT_FILE_LOC="/home/alex/agentless/repo_structure/repo_structures"
 export PROJECT_FILE_LOC="/home/apope/documents/neural-networks/swebenchlite/SWE-bench_Lite/repo_structure/repo_structures"
 
-results_dir="full_results_with_semantic_scoring/swe-bench-lite"
+in_dir="og_results"
+out_dir="."
+out_file="solo_semantic_scores.jsonl"
 
-/bin/bash full_workflow/localization_commands_with_semantic_scoring.sh $results_dir
-
-#/bin/bash full_workflow/repair_commands.sh $results_dir
-
-#/bin/bash full_workflow/validation_commands.sh $results_dir
+python -m agentless.fl.semantic_scoring \
+    --output_file "$out_file" \
+    --output_folder "$out_dir" \
+    --input_file "$in_dir/file_level_combined/combined_locs.jsonl"

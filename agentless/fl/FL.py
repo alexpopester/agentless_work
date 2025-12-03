@@ -315,13 +315,16 @@ Return just the locations wrapped with ```.
             temperature=0,
             batch_size=1,
         )
+        print(f"Getting code gen:")
         traj = model.codegen(message, num_samples=1)[0]
         traj["prompt"] = message
         raw_output = traj["response"]
+        print(f"Got response")
 
         files, classes, functions = get_full_file_paths_and_classes_and_functions(
             self.structure
         )
+        print(f"Got files")
 
         f_files = []
         filtered_files = []
@@ -414,7 +417,7 @@ Return just the locations wrapped with ```.
         prefix_lines=10,
         suffix_lines=10,
         semantic_scoring_message: bool = False,
-        semantic_scores: dict = {}
+        semantic_scores: dict = {},
     ):
         from agentless.util.api_requests import num_tokens_from_messages
         from agentless.util.model import make_model
@@ -439,7 +442,11 @@ Return just the locations wrapped with ```.
             template = (
                 self.semantic_obtain_relevant_functions_and_vars_from_compressed_files_prompt_more
             )
-            message = template.format(problem_statement=self.problem_statement, file_contents=file_contents, semantic_scores=semantic_scores)
+            message = template.format(
+                problem_statement=self.problem_statement,
+                file_contents=file_contents,
+                semantic_scores=semantic_scores,
+            )
         else:
             template = (
                 self.obtain_relevant_functions_and_vars_from_compressed_files_prompt_more

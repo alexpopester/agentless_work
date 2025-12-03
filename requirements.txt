@@ -6,7 +6,13 @@ tiktoken
 libcst
 llama-index
 jsonlines
-unidiff
-matplotlib
+llama-cpp-python
+google-generativeai
 llama-index-embeddings-huggingface
+matplotlib
+torch 
+transformers[torch] 
+sentence-transformers 
+whatthepatch 
+tqdm
 swebench @ git+https://github.com/princeton-nlp/SWE-bench

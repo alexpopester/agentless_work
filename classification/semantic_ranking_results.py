@@ -1,43 +1,38 @@
 import json
 import numpy as np
-import matplotlib.pyplot as plt
 from datasets import load_dataset
 from unidiff import PatchSet
 from tqdm import tqdm
 import io
 
-
 def get_gold_standard_locations(patch_text):
     """
     Parses a git patch to find exactly which files and lines were modified.
-    Returns: Dict { 'filename': [list_of_changed_line_numbers] }
+    Returns: Dict { 'filename': set(list_of_changed_line_numbers) }
     """
     ground_truth = {}
     try:
         patch = PatchSet(io.StringIO(patch_text))
         for patched_file in patch:
-            # Skip binary files or deleted files if needed
             if patched_file.is_binary_file:
                 continue
-
-            # Get the path (removing a/ and b/ prefixes usually found in git diffs)
+            
+            # Normalize path (remove a/ b/ prefixes)
             path = patched_file.path
-
+            
             changed_lines = []
             for hunk in patched_file:
-                # We care about the lines in the SOURCE file (before the fix)
-                # because Agentless is looking at the buggy code.
                 start = hunk.source_start
                 length = hunk.source_length
-                # Add all lines covered by this hunk
                 changed_lines.extend(range(start, start + length))
-
-            ground_truth[path] = set(changed_lines)
-    except Exception as e:
-        # Some patches might be malformed or complex
+            
+            # Only add if there are actual line changes
+            if changed_lines:
+                ground_truth[path] = set(changed_lines)
+                
+    except Exception:
         pass
     return ground_truth
-
 
 def is_hit(ranked_func, ground_truth):
     """
@@ -50,115 +45,185 @@ def is_hit(ranked_func, ground_truth):
     if f_path not in ground_truth:
         return False
 
-    # Check for overlap: Did the patch modify lines INSIDE this function?
-    # Intersection of (Function Range) and (Patch Range)
     patch_lines = ground_truth[f_path]
     func_lines = set(range(f_start, f_end + 1))
 
+    # Returns True if any line in the function overlaps with the patch
     return not func_lines.isdisjoint(patch_lines)
 
+def calculate_average_precision(ranked_items, ground_truth):
+    """
+    Calculates Average Precision (AP) for a single instance.
+    Used to compute MAP across the whole dataset.
+    """
+    hits = 0
+    sum_precisions = 0
+    
+    # We define total relevant items as the number of modified files 
+    # (A proxy, since we don't know exactly how many functions are buggy without AST parsing)
+    total_relevant = len(ground_truth.keys())
+    if total_relevant == 0:
+        return 0
+
+    for i, item in enumerate(ranked_items):
+        rank = i + 1
+        if is_hit(item, ground_truth):
+            hits += 1
+            precision_at_i = hits / rank
+            sum_precisions += precision_at_i
+            
+    if hits == 0:
+        return 0
+    
+    return sum_precisions / total_relevant
 
 def calculate_metrics(ranked_file_path):
     print("Loading SWE-bench dataset (for Ground Truth)...")
     dataset = load_dataset("princeton-nlp/SWE-bench_Lite", split="test")
-    # Create map for fast lookup
     gold_map = {item["instance_id"]: item["patch"] for item in dataset}
 
     print(f"Loading Results from {ranked_file_path}...")
     with open(ranked_file_path, "r") as f:
         results = [json.loads(line) for line in f]
 
-    # Storage for metrics
-    recalls = {1: [], 3: [], 5: []}
-    reciprocal_ranks = []
-    precisions = []
+    # --- Metric Storage ---
+    # Hit Rate: Did we find at least one bug?
+    hit_rates = {1: [], 3: [], 5: []}
+    
+    # Precision: (Relevant Retrieved) / k
+    precisions_item = {1: [], 3: [], 5: []}
+    
+    # Recall: (Relevant Retrieved) / (Total Relevant in Ground Truth)
+    recalls_item = {1: [], 3: [], 5: []}
+    
+    # F1: 2 * (P*R)/(P+R)
+    f1_scores = {1: [], 3: [], 5: []}
+
+    # Context Precision: Line-level efficiency
+    context_precisions = []
+    
+    # Ranking Quality
+    mrr_list = []
+    map_list = []
 
     for entry in tqdm(results, desc="Evaluating"):
         inst_id = entry["instance_id"]
         if inst_id not in gold_map:
             continue
 
-        # 1. Get Ground Truth
         patch_text = gold_map[inst_id]
         ground_truth = get_gold_standard_locations(patch_text)
-
-        # 2. Get Your Rankings
-        # Assuming your structure is entry['suspicious_functions'] or similar
-        # If you used the previous script, it might be entry['semantic_rankings']
-        ranked_items = entry.get("semantic_scoring_results", [])
-
-        # If no items found, scores are 0
-        if not ranked_items:
-            recalls[1].append(0)
-            recalls[3].append(0)
-            recalls[5].append(0)
-            reciprocal_ranks.append(0)
-            precisions.append(0)
+        
+        # If ground truth is empty (e.g., binary files only), skip
+        if not ground_truth:
             continue
 
-        # 3. Calculate MRR & Recall
+        ranked_items = entry.get("semantic_scoring_results", [])
+        
+        # --- 1. Calculate MAP (Mean Average Precision) ---
+        # We calculate this on the full list (or top 10/20 if capped)
+        ap = calculate_average_precision(ranked_items, ground_truth)
+        map_list.append(ap)
+
+        # --- 2. Calculate MRR (Mean Reciprocal Rank) ---
         first_hit_rank = None
-        hits_in_top_5 = 0
-
-        for i, item in enumerate(ranked_items[:5]):  # Only check top 5
-            rank = i + 1
+        for i, item in enumerate(ranked_items):
             if is_hit(item, ground_truth):
-                if first_hit_rank is None:
-                    first_hit_rank = rank
-                hits_in_top_5 += 1
-
-        # Recall logic
-        recalls[1].append(1 if first_hit_rank == 1 else 0)
-        recalls[3].append(1 if first_hit_rank and first_hit_rank <= 3 else 0)
-        recalls[5].append(1 if first_hit_rank and first_hit_rank <= 5 else 0)
-
-        # MRR logic
+                first_hit_rank = i + 1
+                break
+        
         mrr = (1.0 / first_hit_rank) if first_hit_rank else 0.0
-        reciprocal_ranks.append(mrr)
+        mrr_list.append(mrr)
 
-        # 4. Calculate Context Precision (for Top 5)
-        # Precision = (Size of Relevant Code / Size of Total Retrieved Code)
-        # We estimate size using line counts
-        total_lines_retrieved = 0
-        relevant_lines_retrieved = 0
+        # --- 3. Calculate Cut-based Metrics (@1, @3, @5) ---
+        # Total distinct files modified in the patch (Proxy for Total Relevant)
+        total_relevant_ground_truth = len(ground_truth.keys())
 
-        for item in ranked_items[:5]:
-            # Calculate length of this snippet
-            # If you saved 'snippet', count \n. Or use lines list length.
-            # Assuming item['lines'] is a list of lines or lines range
-            if "lines" in item and isinstance(item["lines"], list):
-                n_lines = len(item["lines"])
+        for k in [1, 3, 5]:
+            # Slice the top k items
+            top_k_items = ranked_items[:k]
+            
+            # Count relevant items in top k
+            relevant_retrieved = sum(1 for item in top_k_items if is_hit(item, ground_truth))
+            
+            # A. Hit Rate (Accuracy) - Did we find *any* bug?
+            hit_rates[k].append(1 if relevant_retrieved > 0 else 0)
+            
+            # B. Precision @ k
+            # Denominator is k (the number of items we suggested)
+            # If we suggest fewer than k items, use actual length
+            denom = len(top_k_items) if len(top_k_items) > 0 else 1
+            p_k = relevant_retrieved / denom
+            precisions_item[k].append(p_k)
+            
+            # C. Recall @ k
+            # Denominator is Total Relevant Files
+            r_k = relevant_retrieved / total_relevant_ground_truth if total_relevant_ground_truth > 0 else 0
+            # Cap recall at 1.0 (in case multiple functions map to 1 file)
+            r_k = min(r_k, 1.0)
+            recalls_item[k].append(r_k)
+            
+            # D. F1 @ k
+            if (p_k + r_k) > 0:
+                f1 = 2 * (p_k * r_k) / (p_k + r_k)
             else:
-                # Fallback estimate
-                n_lines = item.get("end_line", 0) - item.get("start_line", 0)
+                f1 = 0
+            f1_scores[k].append(f1)
 
-            total_lines_retrieved += n_lines
-
+        # --- 4. Context Precision (Line Level for Top 5) ---
+        total_lines = 0
+        relevant_lines = 0
+        for item in ranked_items[:5]:
+            # Estimate lines based on start/end tags
+            n_lines = item.get("end_line", 0) - item.get("start_line", 0) + 1
+            total_lines += n_lines
             if is_hit(item, ground_truth):
-                relevant_lines_retrieved += n_lines
-
-        if total_lines_retrieved > 0:
-            precisions.append(relevant_lines_retrieved / total_lines_retrieved)
+                relevant_lines += n_lines
+        
+        if total_lines > 0:
+            context_precisions.append(relevant_lines / total_lines)
         else:
-            precisions.append(0)
+            context_precisions.append(0)
 
-    # --- Print Report ---
-    print("\n" + "=" * 40)
-    print("   SEMANTIC FUNNEL PERFORMANCE REPORT   ")
-    print("=" * 40)
-    print(f"Total Instances Evaluated: {len(results)}")
-    print(f"Recall@1: {np.mean(recalls[1]):.2%}")
-    print(f"Recall@3: {np.mean(recalls[3]):.2%}")
-    print(f"Recall@5: {np.mean(recalls[5]):.2%}")
-    print("-" * 20)
-    print(f"Mean Reciprocal Rank (MRR): {np.mean(reciprocal_ranks):.4f}")
-    print("-" * 20)
-    print(f"Avg Context Precision (Top 5): {np.mean(precisions):.2%}")
-    print("=" * 40)
+    # --- PRINT FINAL REPORT ---
+    print("\n" + "="*50)
+    print(f"   DETAILED SEMANTIC EVALUATION REPORT")
+    print("="*50)
+    print(f"Total Instances Evaluated: {len(mrr_list)}")
+    print("-" * 50)
+    
+    print("RANKING METRICS:")
+    print(f"  MAP (Mean Avg Precision):  {np.mean(map_list):.4f}")
+    print(f"  MRR (Mean Reciprocal Rank):{np.mean(mrr_list):.4f}")
+    
+    print("-" * 50)
+    print("HIT RATE (Success Rate - Found at least 1 bug):")
+    print(f"  Hit@1: {np.mean(hit_rates[1]):.2%}")
+    print(f"  Hit@3: {np.mean(hit_rates[3]):.2%}")
+    print(f"  Hit@5: {np.mean(hit_rates[5]):.2%}")
 
+    print("-" * 50)
+    print("PRECISION (Item Level - % of suggestions that are bugs):")
+    print(f"  Precision@1: {np.mean(precisions_item[1]):.2%}")
+    print(f"  Precision@3: {np.mean(precisions_item[3]):.2%}")
+    print(f"  Precision@5: {np.mean(precisions_item[5]):.2%}")
+
+    print("-" * 50)
+    print("RECALL (Item Level - % of bugs found):")
+    print(f"  Recall@1: {np.mean(recalls_item[1]):.2%}")
+    print(f"  Recall@3: {np.mean(recalls_item[3]):.2%}")
+    print(f"  Recall@5: {np.mean(recalls_item[5]):.2%}")
+
+    print("-" * 50)
+    print("F1 SCORE (Harmonic Mean of Precision & Recall):")
+    print(f"  F1@1: {np.mean(f1_scores[1]):.4f}")
+    print(f"  F1@3: {np.mean(f1_scores[3]):.4f}")
+    print(f"  F1@5: {np.mean(f1_scores[5]):.4f}")
+
+    print("-" * 50)
+    print("EFFICIENCY:")
+    print(f"  Avg Context Precision (Top 5): {np.mean(context_precisions):.2%}")
+    print("="*50)
 
 if __name__ == "__main__":
-    # Point this to your actual output file
-    calculate_metrics(
-        "full_results_with_semantic_scoring/swe-bench-lite/file_level_combined/semantic_scoring_combined_locs.jsonl"
-    )
+    calculate_metrics("full_results_with_semantic_scoring/swe-bench-lite/file_level_combined/semantic_scoring_combined_locs.jsonl")

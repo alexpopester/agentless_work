@@ -228,9 +228,6 @@ class EmbeddingIndex(ABC):
 
         # 2. Use the Hugging Face tokenizer's encode method
         token_counter = TokenCountingHandler(tokenizer=hf_tokenizer.encode)
-        # embed_model = HuggingFaceInferenceAPIEmbedding(
-        #    model_name="BAAI/bge-small-en-v1.5"
-        # )
         embed_model = HuggingFaceEmbedding(
             model_name="BAAI/bge-small-en-v1.5", embed_batch_size=10, device="cpu"
         )

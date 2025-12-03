@@ -13,6 +13,16 @@ from agentless.util.api_requests import (
     request_chatgpt_engine,
 )
 
+# Check for llama-cpp-python availability
+try:
+    from llama_cpp import Llama
+
+    LLAMA_CPP_AVAILABLE = True
+except ImportError:
+    LLAMA_CPP_AVAILABLE = False
+
+MADE_MODEL = None
+
 
 class DecoderBase(ABC):
     def __init__(
@@ -438,7 +448,7 @@ class GeminiChatDecoder(DecoderBase):
                     generation_config=generation_config,
                     safety_settings=safety_settings,
                 )
-                #print(f"generated response: {response}")
+                # print(f"generated response: {response}")
 
                 # Extract usage metadata if available
                 usage = {
@@ -482,70 +492,168 @@ class GeminiChatDecoder(DecoderBase):
     def is_direct_completion(self) -> bool:
         return False
 
+
+import requests
+import json
+import os
+
+
 class LocalChatDecoder(DecoderBase):
     def __init__(self, name: str, logger, **kwargs) -> None:
         super().__init__(name, logger, **kwargs)
-        # Default to standard vLLM port, can be overridden by env var
+        # Default to standard llama-server port
         self.base_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:8000/v1")
-        # Local servers usually don't care about the key, but some require a placeholder
         self.api_key = os.getenv("LOCAL_LLM_API_KEY", "EMPTY")
 
     def codegen(
         self, message: str, num_samples: int = 1, prompt_cache: bool = False
     ) -> List[dict]:
+
+        # 1. Validate inputs
         if self.temperature == 0:
-            assert num_samples == 1
-        batch_size = min(self.batch_size, num_samples)
+            num_samples = 1
 
-        # We reuse the ChatGPT config creator as the payload structure is identical
-        config = create_chatgpt_config(
-            message=message,
-            max_tokens=self.max_new_tokens,
-            temperature=self.temperature,
-            batch_size=batch_size,
-            model=self.name,
-        )
+        # 2. Construct the Endpoint URL
+        # We ensure no double slashes if base_url ends in /
+        endpoint = f"{self.base_url.rstrip('/')}/chat/completions"
 
-        # We pass the custom base_url and api_key to the engine request
-        # Note: This assumes request_chatgpt_engine accepts base_url/api_key kwargs 
-        # (which is standard in Agentless utils based on the DeepSeek example)
-        ret = request_chatgpt_engine(
-            config, 
-            self.logger, 
-            base_url=self.base_url, 
-            api_key=self.api_key
-        )
+        # 3. Manually build the payload (mimics OpenAI API)
+        payload = {
+            "model": self.name,  # The server usually ignores this or treats it as an alias
+            "messages": [{"role": "user", "content": message}],
+            "max_tokens": self.max_new_tokens,
+            "temperature": self.temperature,
+            "n": num_samples,  # Ask the server to generate 'n' choices
+            "stream": False,
+        }
 
-        if ret:
-            responses = [choice.message.content for choice in ret.choices]
-            completion_tokens = ret.usage.completion_tokens
-            prompt_tokens = ret.usage.prompt_tokens
-        else:
-            responses = [""]
-            completion_tokens = 0
-            prompt_tokens = 0
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
 
-        trajs = [
-            {
-                "response": responses[0],
-                "usage": {
-                    "completion_tokens": completion_tokens,
-                    "prompt_tokens": prompt_tokens,
-                },
-            }
-        ]
-        
-        # Handle multiple samples (assuming cost is amortized to first request for tracking purposes)
-        for response in responses[1:]:
+        try:
+            # 4. Send the raw HTTP Request
+            print("Posting")
+            response = requests.post(
+                endpoint,
+                json=payload,
+                headers=headers,
+                timeout=300,  # Generous timeout for local inference
+            )
+            print("Got post")
+            response.raise_for_status()  # Raise error for 400/500 codes
+
+            print("Pulled Data")
+            data = response.json()
+
+            # 5. Extract Data
+            choices = data.get("choices", [])
+            usage = data.get("usage", {})
+            completion_tokens = usage.get("completion_tokens", 0)
+            prompt_tokens = usage.get("prompt_tokens", 0)
+
+        except Exception as e:
+            self.logger.error(f"Local LLM Request failed: {e}")
+            print(f"Request failed: {e}")
+            # Return empty structure on failure to prevent pipeline crash
+            return [
+                {"response": "", "usage": {"completion_tokens": 0, "prompt_tokens": 0}}
+            ] * num_samples
+
+        # 6. Format the output to match DecoderBase expectation
+        trajs = []
+
+        # We assume the API returned 'num_samples' choices.
+        # If it returned fewer, we loop over what we got.
+        print(f"Enumerating choices : {len(choices)}")
+        for i, choice in enumerate(choices):
+            text = choice.get("message", {}).get("content", "")
+
+            # Logic from your previous snippet:
+            # Attribute usage costs only to the first sample to avoid double counting
+            c_tokens = completion_tokens if i == 0 else 0
+            p_tokens = prompt_tokens if i == 0 else 0
+
             trajs.append(
                 {
-                    "response": response,
+                    "response": text,
                     "usage": {
-                        "completion_tokens": 0,
-                        "prompt_tokens": 0,
+                        "completion_tokens": c_tokens,
+                        "prompt_tokens": p_tokens,
                     },
                 }
             )
+
+        return trajs
+
+    def is_direct_completion(self) -> bool:
+        return False
+
+
+class LlamaCppDecoder(DecoderBase):
+    """
+    Runs the model using llama-cpp-python (GGUF format).
+    The 'name' parameter should be the path to the .gguf file.
+    """
+
+    def __init__(self, name: str, logger, **kwargs) -> None:
+        super().__init__(name, logger, **kwargs)
+
+        if not LLAMA_CPP_AVAILABLE:
+            raise ImportError(
+                "llama-cpp-python is not installed. Please run `pip install llama-cpp-python`."
+            )
+
+        if not os.path.exists(name):
+            self.logger.warning(
+                f"GGUF model path not found locally: {name}. Ensure this is a valid path to a .gguf file."
+            )
+
+        print(f"Loading GGUF model from {name}...")
+
+        # Initialize Llama
+        # n_gpu_layers=-1 attempts to offload all layers to GPU
+        # n_ctx=4096 sets context window (default is often small like 512)
+        self.llm = Llama(
+            model_path=name,
+            n_gpu_layers=-1,
+            n_ctx=8192,  # Set higher for coding tasks
+            verbose=False,
+        )
+
+    def codegen(
+        self, message: str, num_samples: int = 1, prompt_cache: bool = False
+    ) -> List[dict]:
+
+        trajs = []
+        # llama-cpp-python usually generates one at a time unless using batched inference which is complex
+        # We loop for num_samples
+        for _ in range(num_samples):
+            # Create completion
+            output = self.llm(
+                message,
+                max_tokens=self.max_new_tokens,
+                temperature=self.temperature,
+                stop=[],  # Add stop tokens if necessary, e.g. ["<|im_end|>"]
+            )
+
+            # Extract standard OpenAI-like usage stats
+            usage = output.get("usage", {})
+            completion_tokens = usage.get("completion_tokens", 0)
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            text = output["choices"][0]["text"]
+
+            trajs.append(
+                {
+                    "response": text,
+                    "usage": {
+                        "completion_tokens": completion_tokens,
+                        "prompt_tokens": prompt_tokens,
+                    },
+                }
+            )
+
         return trajs
 
     def is_direct_completion(self) -> bool:
@@ -560,6 +668,7 @@ def make_model(
     max_tokens: int = 1024,
     temperature: float = 0.0,
 ):
+    global MADE_MODEL
     if backend == "openai":
         return OpenAIChatDecoder(
             name=model,
@@ -586,11 +695,32 @@ def make_model(
         )
     elif backend == "gemini":
         return GeminiChatDecoder(
-            name="gemini-2.0-flash-lite",
+            name="gemini-2.5-flash-lite",
             logger=logger,
             batch_size=batch_size,
             max_new_tokens=max_tokens,
             temperature=temperature,
         )
+    elif backend == "local":
+        return LocalChatDecoder(
+            name=model,
+            logger=logger,
+            batch_size=batch_size,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+        )
+    elif backend == "llama_cpp":
+        if MADE_MODEL != None:
+            return MADE_MODEL
+        returned_model = LlamaCppDecoder(
+            name=os.environ["PATH_TO_LOCAL_MODEL"],
+            logger=logger,
+            batch_size=batch_size,
+            max_new_tokens=max_tokens,
+            temperature=temperature,
+        )
+        if MADE_MODEL == None:
+            MADE_MODEL = returned_model
+        return returned_model
     else:
         raise NotImplementedError

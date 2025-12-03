@@ -75,7 +75,9 @@ class SemanticMatcher:
     def __init__(self):
         print("Loading GraphCodeBERT...")
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/graphcodebert-base")
-        self.model = AutoModel.from_pretrained("microsoft/graphcodebert-base")
+        # 3. Load the Model
+        self.model = AutoModel.from_pretrained("fine-tune-graphcodebert-bugs")
+        #self.model = AutoModel.from_pretrained("microsoft/graphcodebert-base")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
 
@@ -89,8 +91,23 @@ class SemanticMatcher:
         with torch.no_grad():
             outputs = self.model(**inputs)
 
+        # return outputs.last_hidden_state[:, 0, :].cpu().numpy()
+
         # [CLS] token is usually the first token (index 0) representing the whole sequence
-        return outputs.last_hidden_state[:, 0, :].cpu().numpy()
+        # --- FIX: Mean Pooling ---
+        token_embeddings = outputs.last_hidden_state
+        attention_mask = inputs["attention_mask"]
+
+        # Expand mask to match embedding dimensions
+        input_mask_expanded = (
+            attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+        )
+
+        # Sum embeddings and divide by valid token count
+        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+
+        return (sum_embeddings / sum_mask).cpu().numpy()
 
 
 # --- 3. Putting it together (The Workflow) ---
@@ -189,10 +206,16 @@ def produce_semantic_analysis(args):
     existing_instance_ids = set()
     # if args.num_threads == 1:
     new_entry_list = []
+    count = 0
     for bug in tqdm(swe_bench_data, colour="MAGENTA"):
         result = localize_repo(bug, args, swe_bench_data, existing_instance_ids)
         if result:
             new_entry_list.append(result)
+        count += 1
+        if count % 10 == 0:
+            write_jsonl(
+                new_entry_list, os.path.join(args.output_folder, args.output_file)
+            )
 
     write_jsonl(new_entry_list, os.path.join(args.output_folder, args.output_file))
 

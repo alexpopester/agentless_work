@@ -59,6 +59,7 @@ def localize_irrelevant_instance(
 
     # file level localization
     if args.file_level:
+        print(f"Requesting data:")
         fl = LLMFL(
             instance_id,
             structure,
@@ -67,9 +68,11 @@ def localize_irrelevant_instance(
             args.backend,
             logger,
         )
+        print(f"Got model")
         found_files, additional_artifact_loc_file, file_traj = fl.localize_irrelevant(
             mock=args.mock
         )
+        print(f"FOUND FILES: {found_files}")
     else:
         raise NotImplementedError
 
@@ -206,7 +209,7 @@ def localize_instance(
                         prefix_lines=args.compress_assign_prefix_lines,
                         suffix_lines=args.compress_assign_suffix_lines,
                         semantic_scoring_message=semantic_scores_exist,
-                        semantic_scores=semantic_scores
+                        semantic_scores=semantic_scores,
                     )
                     additional_artifact_loc_related = [additional_artifact_loc_related]
                     related_loc_trajs.append(related_loc_traj)
@@ -500,10 +503,12 @@ def merge(args):
         for locs in start_file_locs:
             merged_found_locs = []
             if "found_edit_locs" in locs and len(locs["found_edit_locs"]):
-                print(locs["found_edit_locs"])
-                merged_found_locs = merge_locs(
-                    locs["found_edit_locs"][st_id : st_id + 1]
-                )
+                print(f"FOUND LOCS: {locs["found_edit_locs"]}")
+                if isinstance(locs["found_edit_locs"], dict):
+                    merger = [locs["found_edit_locs"]]
+                else:
+                    merger = locs["found_edit_locs"][st_id : st_id + 1]
+                merged_found_locs = merge_locs(merger)
             merged_locs.append({**locs, "found_edit_locs": merged_found_locs})
         with open(
             f"{args.output_folder}/loc_merged_{st_id}-{en_id}_outputs.jsonl", "w"
@@ -583,19 +588,21 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o-2024-05-13",
+        default="gemini-2.0-flash-lite",
         choices=[
             "gpt-4o-2024-05-13",
             "deepseek-coder",
             "gpt-4o-mini-2024-07-18",
             "claude-3-5-sonnet-20241022",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash-lite",
         ],
     )
     parser.add_argument(
         "--backend",
         type=str,
-        default="openai",
-        choices=["openai", "deepseek", "anthropic", "gemini"],
+        default="llama_cpp",
+        choices=["openai", "deepseek", "anthropic", "gemini", "llama_cpp", "local"],
     )
     parser.add_argument(
         "--dataset",
