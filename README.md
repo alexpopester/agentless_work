@@ -1,3 +1,29 @@
+# CS6640 Final Project: Using GraphCodeBERT Embeddings To Enhance an Agentless Pipeline’s Ability to localize bugs in Python Github Projects
+This project includes the agenless code, the added api bindings for gemini and a local model, the semantic similarity calculations via GraphCodeBERT and a couple of runner scripts.
+### To run the Semantic similarity on one instance do the following:
+- Open "run_semantic_scoring_alone.sh"
+- Point the "in_dir" variable to a folder containing "Agentless" localization results. A pre-generated set of these can be downloaded here: [https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip](https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip)
+- verify the out_dir and out_file variables are to your preference
+- Run the script.
+- Inspect the generated embeddings at the "embeddings" folder and inspect the semantic similarity at your "out_dir/out_file"
+
+#### To run it on only one instance:
+- Modify "run_semantic_scoring_alone.sh" and use the all instances section instead.
+- Point the PROJECT_FILE_LOC variable to the location of the downloaded swe-bench-lite repo. This is not necessary but avoids downloading the data set dynamically which saves a lot of time. It is 3.5 GB. Download it here: [https://drive.usercontent.google.com/download?id=15-4XjTmY48ystrsc_xcvtOkMs3Fx8RoW&export=download&authuser=0&confirm=t&uuid=927974f7-294c-45ab-b5ce-dd8dd816aba2&at=ALWLOp55XuTjV6RIYrtvNMwuAzhl%3A1763766440739](https://drive.usercontent.google.com/download?id=15-4XjTmY48ystrsc_xcvtOkMs3Fx8RoW&export=download&authuser=0&confirm=t&uuid=927974f7-294c-45ab-b5ce-dd8dd816aba2&at=ALWLOp55XuTjV6RIYrtvNMwuAzhl%3A1763766440739)
+- Point the "in_dir" variable to a folder containing "Agentless" localization results. A pre-generated set of these can be downloaded here: [https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip](https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip)
+- verify the out_dir and out_file variables are to your preference
+- Run the script.
+- Inspect the generated embeddings at the "embeddings" folder and inspect the semantic similarity at your "out_dir/out_file"
+
+### Not required to test embeddings unless you want to generate your own prompts
+### To run the full localization with semantic scoring run:
+- Set the google API key for the prompts. If a different model and binding is wanted you will need to edit the arguments in the "full_workflow/localization..." scripts.
+- Point the PROJECT_FILE_LOC variable to the location of the downloaded swe-bench-lite repo. This is not necessary but avoids downloading the data set dynamically which saves a lot of time
+- Set your RESULTS_FOLDER to define where the prompts and jsonl files should be generated
+- Run the script. Be aware of the api limits if using chatgpt, anthropic or gemini
+
+
+# Original Project README below for reference:
 # 😺 Agentless
 
 <p align="center">
