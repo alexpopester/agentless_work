@@ -76,8 +76,12 @@ class SemanticMatcher:
         print("Loading GraphCodeBERT...")
         self.tokenizer = AutoTokenizer.from_pretrained("microsoft/graphcodebert-base")
         # 3. Load the Model
-        self.model = AutoModel.from_pretrained("fine-tune-graphcodebert-bugs")
-        #self.model = AutoModel.from_pretrained("microsoft/graphcodebert-base")
+        try:
+            self.model = AutoModel.from_pretrained("fine-tuned-graphcodebert-bugs")
+            print("Using fine tuned model")
+        except:
+            self.model = AutoModel.from_pretrained("microsoft/graphcodebert-base")
+            print("Using base graph code bert")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
 

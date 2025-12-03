@@ -11,11 +11,11 @@ out_file="solo_semantic_scores.jsonl"
 
 
 # USE THIS to run one instance
-#python -m agentless.fl.semantic_scoring \
-#    --output_file "$out_file" \
-#    --output_folder "$out_dir" \
-#   --target_id=astropy__astropy-6938 \
-#    --input_file "$in_dir/file_level_combined/combined_locs.jsonl"
+python -m agentless.fl.semantic_scoring \
+    --output_file "$out_file" \
+    --output_folder "$out_dir" \
+   --target_id=astropy__astropy-6938 \
+    --input_file "$in_dir/file_level_combined/combined_locs.jsonl"
 
 # USE THIS to run all the instances
 #python -m agentless.fl.semantic_scoring \
