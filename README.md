@@ -1,26 +1,26 @@
 # CS6640 Final Project: Using GraphCodeBERT Embeddings To Enhance an Agentless Pipeline’s Ability to localize bugs in Python Github Projects
 This project includes the agenless code, the added api bindings for gemini and a local model, the semantic similarity calculations via GraphCodeBERT and a couple of runner scripts.
 
-### Before running anything
+### 0. Before running anything
 - create a python virtual environment "python -m venv .venv"
 - activate the virtual environment "source .venv/bin/activate"
 - install the dependencies "pip install -r requirements.txt"
 
-### To get the fine tuned model (Preferred for better results):
+### 1.To get the fine tuned model (Preferred for better results):
 - Download it here [https://drive.google.com/file/d/1B9X52hsL7xnTmj-Ale8w2pCVWGxjDUhR/view?usp=sharing](https://drive.google.com/file/d/1B9X52hsL7xnTmj-Ale8w2pCVWGxjDUhR/view?usp=sharing)
 - Unzip .zip file in the main "Agentless" repository
 
-### To use the base Graph CodeBERT (Preferred for faster testing of repo):
+### 1.(alternate to avoid downloading model) To use the base Graph CodeBERT (Preferred for faster testing of repo):
 - Don't have the fine tuned model in your repo.
 
-### To run the Semantic similarity on one instance do the following (Fastest but only one example):
+### 2. To run the Semantic similarity on one instance do the following (Fastest but only one example):
 - Open "run_semantic_scoring_alone.sh"
 - Point the "in_dir" variable to a folder containing localization results. The "in_dir" var should point to the directory that contains folders like "file_level", "file_level_combined" etc. A pre-generated set of these can be downloaded here: [https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip](https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip)
 - Verify the out_dir and out_file variables are to your preference
 - Run the script.
 - Inspect the generated embeddings at the "embeddings" folder and inspect the semantic similarity at your "out_dir/out_file"
 
-#### To run Semantic similarity on entire dataset (Slower but provides larger data sample):
+### 2.(full dataset) To run Semantic similarity on entire dataset (Slower but provides larger data sample):
 - Modify "run_semantic_scoring_alone.sh" and use the all instances section instead.
 - Point the PROJECT_FILE_LOC variable to the location of the downloaded swe-bench-lite repo. This is not necessary but avoids downloading the data set dynamically which saves a lot of time. It is 3.5 GB. Download it here: [https://drive.usercontent.google.com/download?id=15-4XjTmY48ystrsc_xcvtOkMs3Fx8RoW&export=download&authuser=0&confirm=t&uuid=927974f7-294c-45ab-b5ce-dd8dd816aba2&at=ALWLOp55XuTjV6RIYrtvNMwuAzhl%3A1763766440739](https://drive.usercontent.google.com/download?id=15-4XjTmY48ystrsc_xcvtOkMs3Fx8RoW&export=download&authuser=0&confirm=t&uuid=927974f7-294c-45ab-b5ce-dd8dd816aba2&at=ALWLOp55XuTjV6RIYrtvNMwuAzhl%3A1763766440739)
 - Point the "in_dir" variable to a folder containing "Agentless" localization results. A pre-generated set of these can be downloaded here: [https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip](https://github.com/OpenAutoCoder/Agentless/releases/download/v1.5.0/agentless_swebench_lite.zip)
@@ -28,8 +28,8 @@ This project includes the agenless code, the added api bindings for gemini and a
 - Run the script.
 - Inspect the generated embeddings at the "embeddings" folder and inspect the semantic similarity at your "out_dir/out_file"
 
-### Not required to test embeddings. Only run if you want to generate your own prompts
-### To run the full localization with semantic scoring run:
+## Not required to test embeddings. Only run if you want to generate your own prompts
+#### To run the full localization with semantic scoring run:
 - Set the google API key for the prompts. If a different model and binding is wanted you will need to edit the arguments in the "full_workflow/localization..." scripts.
 - Point the PROJECT_FILE_LOC variable to the location of the downloaded swe-bench-lite repo. This is not necessary but avoids downloading the data set dynamically which saves a lot of time
 - Set your RESULTS_FOLDER to define where the prompts and jsonl files should be generated
